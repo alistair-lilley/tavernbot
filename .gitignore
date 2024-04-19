@@ -1,3 +1,5 @@
 sbin/
 .env
 .venv/
+admins
+data/
