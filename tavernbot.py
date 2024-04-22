@@ -94,7 +94,7 @@ class TavernBot:
                     json.dump(self._default_admins, pf)
             except Exception as e:
                 LOGGER.critical(f"Failed to create polls due to error <{e}>")
-    
+
     def _validate_has_admins(self: TavernBot):
         if not self._admins:
             self._admins = self._default_admins.copy()
@@ -120,7 +120,7 @@ class TavernBot:
 
     def add_admin(self: TavernBot, adminat: str = None):
         """Add an admin to the dict by @"""
-        self._admins[adminat] = None
+        self._admins[adminat.lower()] = None
         self.serialize()
 
     def remove_admin(self: TavernBot, admin: str):
@@ -143,15 +143,15 @@ class TavernBot:
         try:
             # yeah i know its janky its fine its fine
             self.remove_admin(adminid)
-            self.remove_admin(adminat)
-            self._admins[adminat] = adminid
-            LOGGER.debug("Updated admin %s (%s)", adminat, adminid)
+            self.remove_admin(adminat.lower())
+            self._admins[adminat.lower()] = adminid
+            LOGGER.debug("Updated admin %s (%s)", adminat.lower(), adminid)
         except Exception as e:
-            LOGGER.critical("Failed to update admin %s (%s)!", adminat, adminid)
+            LOGGER.critical("Failed to update admin %s (%s)!", adminat.lower(), adminid)
         self.serialize()
 
     def purge_admins(self: TavernBot):
-        self._admins = {}
+        self._admins = self._default_admins.copy()
         self.serialize()
 
     @property
