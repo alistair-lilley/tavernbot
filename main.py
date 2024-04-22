@@ -184,6 +184,13 @@ async def decline_purge_admin(message: Message, state: FSMContext):
     await state.clear()
 
 
+@router.message()
+@pre_command_check_stateless
+async def __catchall(message: Message):
+    """Catches all messages for the pre-command checks"""
+    pass
+
+
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     loop.create_task(dispatcher.start_polling(tgbot))
