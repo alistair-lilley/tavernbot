@@ -1,3 +1,8 @@
 sbin/
 .env
 .venv/
+admins
+data/
+tests/
+__pycache__/
+**/__pycache__/

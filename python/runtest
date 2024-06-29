@@ -1,0 +1,25 @@
+#!/bin/bash
+
+THISPATH=$(dirname $(realpath $0))
+ROOTPATH=$(realpath "$THISPATH")
+PYTHON="$ROOTPATH/.venv/bin/python3"
+
+while getopts "am:" opt
+do
+    case $opt in
+        a)
+            ALL=true
+            ;;
+        m)
+            MODULES+=("$OPTARG")
+            ;;
+    esac
+done
+
+
+if [ $ALL ]
+then
+    $PYTHON $THISPATH/run_tests.py -a
+else
+    $PYTHON $THISPATH/run_tests.py $MODULES
+fi
