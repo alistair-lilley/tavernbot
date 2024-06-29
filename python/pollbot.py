@@ -10,7 +10,7 @@ import logging
 
 from typing import Dict, List, TYPE_CHECKING
 
-from botstates import CreatePoll, PickSendPoll, PickDeletePoll, InspectingPoll
+from botstates import CreatePoll, PickDeletePoll, InspectingPoll
 from pollmgr import PollMgr
 
 from aiogram.types.reply_keyboard_markup import ReplyKeyboardMarkup
@@ -90,6 +90,26 @@ class PollBot:
         self._starting_command: Dict = {}
         self._command_coming_from: Dict = {}  # user: groupchat
 
+    def _get_polls_for_chat(self: PollBot, chatid: int):
+        allpolls = [name for name, poll in self._poll_mgr.polls.items() if poll.chatid == chatid]
+        if len(allpolls) % 2 == 0:
+            buttons = [
+                [KeyboardButton(text=poll1), KeyboardButton(text=poll2)]
+                for poll1, poll2 in zip(allpolls[::2], allpolls[1::2])
+            ]
+            buttons.append([CANCELBUTTON])
+        elif len(allpolls) % 2 != 0:
+            allpolls, lastpoll = allpolls[:-1], allpolls[-1]
+            if allpolls:
+                buttons = [
+                    [KeyboardButton(text=poll1), KeyboardButton(text=poll2)]
+                    for poll1, poll2 in zip(allpolls[::2], allpolls[1::2])
+                ]
+            else:
+                buttons = []
+            buttons.append([KeyboardButton(text=lastpoll), CANCELBUTTON])
+        return ReplyKeyboardMarkup(keyboard=buttons)
+
     async def initiate_poll_creation(self: PollBot, message: Message):
         """Starts poll creation process"""
         if message.chat.type == "private":
@@ -154,7 +174,7 @@ class PollBot:
     ):
         """Set a day and query either more days or done"""
         wk_mnth = (await state.get_data())["wk_mnth"]
-        if (wk_mnth == "monthly" and not (1 <= int(message.text) <= 31)) or (
+        if (wk_mnth == "monthly" and not (message.text.isdigit() and (1 <= int(message.text) <= 31))) or (
             wk_mnth == "weekly" and message.text.lower() not in DOW.keys()
         ):
             await message.answer("That's not a valid option!!! Try again pls")
@@ -208,9 +228,6 @@ class PollBot:
 
     async def add_answer_query_anon(self: PollBot, message: Message, state: FSMContext):
         """Add an answer and query anon mode or not"""
-        await state.update_data(
-            replyopts=((await state.get_data())["replyopts"]) + [message.text]
-        )
         await message.answer(
             "Sweet! Questions added. Now, do you want this poll to be anonymous?",
             reply_markup=YESNOKB,
@@ -252,23 +269,7 @@ class PollBot:
 
     async def select_inspect_poll(self: PollBot, message: Message, state: FSMContext):
         """shows inspectable polls"""
-        allpolls = self._poll_mgr.poll_names
-        if len(allpolls) % 2 == 0:
-            buttons = [
-                [KeyboardButton(text=poll1), KeyboardButton(text=poll2)]
-                for poll1, poll2 in zip(allpolls[::2], allpolls[1::2])
-            ]
-            buttons.append([CANCELBUTTON])
-        elif len(allpolls) % 2 != 0:
-            allpolls, lastpoll = allpolls[:-1], allpolls[-1]
-            if allpolls:
-                buttons = [
-                    [KeyboardButton(text=poll1), KeyboardButton(text=poll2)]
-                    for poll1, poll2 in zip(allpolls[::2], allpolls[1::2])
-                ]
-            else:
-                buttons = []
-            buttons.append([KeyboardButton(text=lastpoll), CANCELBUTTON])
+        buttons = self._get_polls_for_chat(message.chat.id)
         await message.answer(
             "Pick one of the following polls to see more about it!",
             reply_markup=ReplyKeyboardMarkup(keyboard=buttons),
@@ -294,31 +295,11 @@ class PollBot:
             await message.answer("Run this command in a group first!")
             return
         await message.reply("I'm sending you a dm!")
-        allpolls = [
-            poll.name
-            for poll in self._poll_mgr.polls.values()
-            if poll.chatid == message.chat.id
-        ]
-        if len(allpolls) % 2 == 0:
-            buttons = [
-                [KeyboardButton(text=poll1), KeyboardButton(text=poll2)]
-                for poll1, poll2 in zip(allpolls[::2], allpolls[1::2])
-            ]
-            buttons.append([CANCELBUTTON])
-        elif len(allpolls) % 2 != 0:
-            allpolls, lastpoll = allpolls[:-1], allpolls[-1]
-            if allpolls:
-                buttons = [
-                    [KeyboardButton(text=poll1), KeyboardButton(text=poll2)]
-                    for poll1, poll2 in zip(allpolls[::2], allpolls[1::2])
-                ]
-            else:
-                buttons = []
-            buttons.append([KeyboardButton(text=lastpoll), CANCELBUTTON])
+        buttons = self._get_polls_for_chat(message.chat.id)
         await self._tgbot.send_message(
             message.from_user.id,
             "Pick one of these polls to send and i'll send it!!",
-            reply_markup=ReplyKeyboardMarkup(keyboard=buttons),
+            reply_markup=buttons,
         )
         self._starting_command[message.from_user.id] = "send"
         self._command_coming_from[message.from_user.id] = message.chat.id
@@ -360,15 +341,14 @@ class PollBot:
                 if poll.chatid == message.chat.id
             ]
         )
-        keyboard = [KeyboardButton(text=pollname) for pollname in polls] + [
-            CANCELBUTTON
-        ]
+        buttons = self._get_polls_for_chat(message.chat.id)
         await self._tgbot.send_message(
             message.from_user.id,
             "Pick one of these polls to delete and i'll delete it!!",
-            reply_markup=keyboard,
+            reply_markup=buttons,
         )
-        await state.set_state(PickDeletePoll.picking)
+        self._starting_command[message.from_user.id] = "delete"
+        self._command_coming_from[message.from_user.id] = message.chat.id
 
     async def verify_delete_poll(self: PollBot, message: Message, state: FSMContext):
         """checks you're sure you wanna delete poll"""
@@ -378,13 +358,13 @@ class PollBot:
             reply_markup=YESCANCELKB,
         )
         await state.set_state(PickDeletePoll.verifying)
-        self.no_longer_doing_stuff(message.from_user.id)
 
     async def delete_poll(self: PollBot, message: Message, state: FSMContext):
         """deletes poll"""
         self._poll_mgr.delete_poll((await state.get_data())["poll"])
         await message.answer("Poll deleted!")
         await state.clear()
+        self.no_longer_doing_stuff(message.from_user.id)
 
     def _poll_on_today(self: PollBot, weekly_monthly: str, days: List[int]):
         day_of_week = datetime.datetime.now().isoweekday() + 1
@@ -428,6 +408,9 @@ class PollBot:
 
     def user_sending_poll(self: PollBot, userid: int):
         return self.users_starting_commands.get(userid, "") == "send"
+
+    def user_deleting_poll(self: PollBot, userid: int):
+        return self.users_starting_commands.get(userid, "") == "delete"
 
     def no_longer_doing_stuff(self: PollBot, userid: int):
         if userid in self.users_starting_commands:

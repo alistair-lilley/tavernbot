@@ -24,7 +24,6 @@ class PickSendPoll(StatesGroup):
 
 
 class PickDeletePoll(StatesGroup):
-    picking = State()
     verifying = State()
 
 

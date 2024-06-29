@@ -119,9 +119,9 @@ if not DEBUGGING:
     (~(F.from_user.id.in_(ADMINIDS())))
     & ((F.chat.type == "private") | (F.text.startswith("/")))
 )
-async def nonadmin(message: Message):
-    """Validate that a user is an admin if the user is either sending a slash command or talking
-    to the bot in private messages
+async def nonadmin_command(message: Message):
+    """Validate that a user is an admin if the user is either sending a slash command or talking to
+    the bot in private messages
 
     this MUST be the first router call defined in this file"""
     LOGGER.info(
@@ -130,6 +130,10 @@ async def nonadmin(message: Message):
         message.from_user.id,
     )
 
+
+@router.message(~(F.from_user.id.in_(ADMINIDS())))
+async def nonadmin_all(message: Message):
+    """Ignore any other messages not from admins"""
 
 # State-based operations
 
@@ -203,12 +207,6 @@ async def decline_purge_admin(message: Message, state: FSMContext):
     await adminbot.decline_purge_admin(message, state)
 
 
-@router.message(PickDeletePoll.picking, F.chat.type == "private")
-@pre_command_check_stateful
-async def verify_delete_poll(message: Message, state: FSMContext):
-    await pollbot.verify_delete_poll(message, state)
-
-
 @router.message(PickDeletePoll.verifying, F.chat.type == "private")
 @pre_command_check_stateful
 async def delete_poll(message: Message, state: FSMContext):
@@ -240,8 +238,17 @@ async def send_poll_now(message: Message):
     await pollbot.send_poll_now(message)
 
 
-# Commands
+@router.message(
+    F.from_user.func(lambda from_user: pollbot.user_deleting_poll(from_user.id))
+    & F.chat.type
+    == "private"
+)
+@pre_command_check_stateful
+async def verify_delete_poll(message: Message, state: FSMContext):
+    await pollbot.verify_delete_poll(message, state)
 
+
+# Commands
 
 @router.message(F.text.startswith("/start"), F.chat.type == "private")
 @pre_command_check_stateless
@@ -330,11 +337,11 @@ async def catchall(message: Message):
 
 
 # doesnt work ;w;
-# @router.message(*ALL_STATES)
-# @pre_command_check_stateful
-# async def catchall(message: Message, state: FSMContext):
-#     """Catches all other messages for the pre-command checks"""
-#     LOGGER.info("state (%s)", state)
+@router.message()
+@pre_command_check_stateful
+async def catchallstates(message: Message, state: FSMContext):
+    """Catches all other messages for the pre-command checks"""
+    LOGGER.info("Ignored message (%s) and state (%s)", message.text, state)
 
 
 if __name__ == "__main__":
